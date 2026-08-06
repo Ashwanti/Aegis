@@ -42,11 +42,36 @@ class RegisterRequestJsonTest {
         RegisterRequest request = mapper.readValue(
                 """
                 {"email":"a@b.com","password":"secret123","fullName":"T",
-                 "organizationName":"","role":""}
+                 "organizationName":"Acme","role":"AUDITOR"}
                 """,
                 RegisterRequest.class);
 
         assertEquals(Role.AUDITOR, request.role());
+    }
+
+    /**
+     * An empty role is rejected rather than coerced. Jackson would otherwise
+     * need CoercionConfig to map "" onto an enum, and silently turning it into
+     * a default is exactly the behaviour that hid the ANALYST bug.
+     */
+    @Test
+    void emptyRoleStringIsRejected() {
+        InvalidFormatException cause = assertThrows(
+                InvalidFormatException.class,
+                () -> mapper.readValue(
+                        """
+                        {"email":"a@b.com","password":"secret123","fullName":"T",
+                         "organizationName":"Acme","role":""}
+                        """,
+                        RegisterRequest.class));
+
+        ResponseEntity<Map<String, Object>> response = new AuthExceptionHandler()
+                .handleUnreadableBody(new HttpMessageNotReadableException("malformed", cause, null));
+
+        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
+        assertEquals(
+                "role must be one of [ADMIN, ANALYST, AUDITOR]",
+                response.getBody().get("message"));
     }
 
     /**
